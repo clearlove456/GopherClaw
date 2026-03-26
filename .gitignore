@@ -1,0 +1,28 @@
+# Environment files
+.env
+.env.local
+
+# Go build outputs
+bin/
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace/cache files
+go.work
+go.work.sum
+coverage.out
+*.coverprofile
+
+# Editor/OS artifacts
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
