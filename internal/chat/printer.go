@@ -23,6 +23,10 @@ func printInfo(text string) {
 	fmt.Printf("%s%s%s\n", dim, text, reset)
 }
 
+func printTool(name, detail string) {
+	fmt.Printf("  %s[tool: %s] %s%s\n", dim, name, detail, reset)
+}
+
 func printAPIError(err error) {
 	fmt.Printf("\n%sAPI Error: %v%s\n\n", yellow, err, reset)
 }

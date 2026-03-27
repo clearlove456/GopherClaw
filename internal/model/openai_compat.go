@@ -11,27 +11,6 @@ import (
 	"time"
 )
 
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type Request struct {
-	ModelID      string
-	SystemPrompt string
-	MaxTokens    int
-	Messages     []Message
-}
-
-type Result struct {
-	StopReason    string
-	AssistantText string
-}
-
-type ChatClient interface {
-	Create(ctx context.Context, req Request) (Result, error)
-}
-
 type OpenAICompatClient struct {
 	apiKey     string
 	baseURL    string
@@ -49,9 +28,10 @@ func NewOpenAICompatClient(apiKey, baseURL string) *OpenAICompatClient {
 }
 
 type chatCompletionRequest struct {
-	Model     string    `json:"model"`
-	Messages  []Message `json:"messages"`
-	MaxTokens int       `json:"max_tokens,omitempty"`
+	Model     string       `json:"model"`
+	Messages  []Message    `json:"messages"`
+	MaxTokens int          `json:"max_tokens,omitempty"`
+	Tools     []ToolSchema `json:"tools,omitempty"`
 }
 
 type chatCompletionResponse struct {
@@ -59,8 +39,15 @@ type chatCompletionResponse struct {
 		FinishReason string `json:"finish_reason"`
 		Message      struct {
 			Role      string `json:"role"`
-			Content   string `json:"content"`
-			ToolCalls []any  `json:"tool_calls"`
+			Content   any    `json:"content"`
+			ToolCalls []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string          `json:"name"`
+					Arguments json.RawMessage `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
 }
@@ -73,6 +60,7 @@ func (c *OpenAICompatClient) Create(ctx context.Context, req Request) (Result, e
 	payload := chatCompletionRequest{
 		Model:     req.ModelID,
 		MaxTokens: req.MaxTokens,
+		Tools:     req.Tools,
 	}
 
 	if req.SystemPrompt != "" {
@@ -120,10 +108,40 @@ func (c *OpenAICompatClient) Create(ctx context.Context, req Request) (Result, e
 
 	choice := parsed.Choices[0]
 	stopReason := mapFinishReason(choice.FinishReason, len(choice.Message.ToolCalls))
+	assistantText := extractAssistantText(choice.Message.Content)
+
+	toolCalls := make([]ToolCall, 0, len(choice.Message.ToolCalls))
+	assistantToolCalls := make([]AssistantToolCall, 0, len(choice.Message.ToolCalls))
+	for _, tc := range choice.Message.ToolCalls {
+		args, parseErr := parseToolArguments(tc.Function.Arguments)
+		if parseErr != nil {
+			return Result{}, fmt.Errorf("parse tool call arguments for %s: %w", tc.Function.Name, parseErr)
+		}
+
+		assistantToolCalls = append(assistantToolCalls, AssistantToolCall{
+			ID:   tc.ID,
+			Type: tc.Type,
+			Function: ToolFunctionCall{
+				Name:      tc.Function.Name,
+				Arguments: rawJSONToString(tc.Function.Arguments),
+			},
+		})
+		toolCalls = append(toolCalls, ToolCall{
+			ID:        tc.ID,
+			Name:      tc.Function.Name,
+			Arguments: args,
+		})
+	}
 
 	return Result{
 		StopReason:    stopReason,
-		AssistantText: choice.Message.Content,
+		AssistantText: assistantText,
+		AssistantMessage: Message{
+			Role:      "assistant",
+			Content:   assistantText,
+			ToolCalls: assistantToolCalls,
+		},
+		ToolCalls: toolCalls,
 	}, nil
 }
 
@@ -152,4 +170,66 @@ func mapFinishReason(finishReason string, toolCalls int) string {
 	default:
 		return finishReason
 	}
+}
+
+func extractAssistantText(content any) string {
+	switch v := content.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	default:
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
+	}
+}
+
+func parseToolArguments(raw json.RawMessage) (map[string]any, error) {
+	args := map[string]any{}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return args, nil
+	}
+
+	if trimmed[0] == '"' {
+		var argumentString string
+		if err := json.Unmarshal(trimmed, &argumentString); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(argumentString) == "" {
+			return args, nil
+		}
+		if err := json.Unmarshal([]byte(argumentString), &args); err != nil {
+			return nil, err
+		}
+		return args, nil
+	}
+
+	if err := json.Unmarshal(trimmed, &args); err != nil {
+		return nil, err
+	}
+	return args, nil
+}
+
+func rawJSONToString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+
+	if trimmed[0] == '"' {
+		var argumentString string
+		if err := json.Unmarshal(trimmed, &argumentString); err == nil {
+			return argumentString
+		}
+	}
+
+	return string(trimmed)
 }

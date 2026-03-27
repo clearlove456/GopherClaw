@@ -26,7 +26,7 @@ func Load() (Config, error) {
 		APIKey:       strings.TrimSpace(os.Getenv("OPENAI_API_KEY")),
 		BaseURL:      getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 		ModelID:      getEnv("MODEL_ID", "gpt-4o-mini"),
-		SystemPrompt: getEnv("SYSTEM_PROMPT", "You are a helpful AI assistant. Answer questions directly."),
+		SystemPrompt: getEnv("SYSTEM_PROMPT", "You are a helpful AI assistant with access to tools. Use tools when needed to help with shell and file operations. Always read a file before editing it."),
 		MaxTokens:    getEnvInt("MAX_TOKENS", 8096),
 	}
 

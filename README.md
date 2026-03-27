@@ -1,6 +1,6 @@
 ## GopherClaw
 
-Section 01 (Go): Agent loop with OpenAI-compatible API.
+Section 02 (Go): Agent loop + tool use with OpenAI-compatible API.
 
 ### Run
 
@@ -18,3 +18,10 @@ go run ./cmd/claw
 - `MODEL_ID` (optional, default: `gpt-4o-mini`)
 - `MAX_TOKENS` (optional, default: `8096`)
 - `SYSTEM_PROMPT` (optional)
+
+### Built-in Tools
+
+- `bash`
+- `read_file`
+- `write_file`
+- `edit_file`
